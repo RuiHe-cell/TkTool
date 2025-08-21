@@ -1,0 +1,252 @@
+{
+  "templates": [
+    {
+      "name": "单个整数",
+      "description": "生成单个整数，适用于简单的数值计算题",
+      "variables": [
+        {
+          "name": "n",
+          "data_type": "整数",
+          "source_type": "数据范围",
+          "separator": "换行",
+          "min_value": "1",
+          "max_value": "1000",
+          "loop_count": 1
+        }
+      ]
+    },
+    {
+      "name": "两个整数",
+      "description": "生成两个整数，适用于加减乘除等运算题",
+      "variables": [
+        {
+          "name": "a",
+          "data_type": "整数",
+          "source_type": "数据范围",
+          "separator": "空格",
+          "min_value": "1",
+          "max_value": "100",
+          "loop_count": 1
+        },
+        {
+          "name": "b",
+          "data_type": "整数",
+          "source_type": "数据范围",
+          "separator": "换行",
+          "min_value": "1",
+          "max_value": "100",
+          "loop_count": 1
+        }
+      ]
+    },
+    {
+      "name": "数组长度+数组元素",
+      "description": "先输入数组长度，再输入数组元素，适用于数组处理题",
+      "variables": [
+        {
+          "name": "n",
+          "data_type": "整数",
+          "source_type": "数据范围",
+          "separator": "换行",
+          "min_value": "3",
+          "max_value": "10",
+          "loop_count": 1
+        },
+        {
+          "name": "arr",
+          "data_type": "整数",
+          "source_type": "数据范围",
+          "separator": "空格",
+          "min_value": "1",
+          "max_value": "100",
+          "loop_count": "n"
+        }
+      ]
+    },
+    {
+      "name": "固定长度数组",
+      "description": "生成固定长度的数组，演示循环功能",
+      "variables": [
+        {
+          "name": "n",
+          "data_type": "整数",
+          "source_type": "选择列表",
+          "separator": "换行",
+          "choices": ["9"],
+          "loop_count": 1
+        },
+        {
+          "name": "k",
+          "data_type": "整数",
+          "source_type": "数据范围",
+          "separator": "换行",
+          "min_value": "10",
+          "max_value": "20",
+          "loop_count": 1
+        },
+        {
+          "name": "arr",
+          "data_type": "整数",
+          "source_type": "数据范围",
+          "separator": "空格",
+          "min_value": "1",
+          "max_value": "9",
+          "loop_count": 9
+        }
+      ]
+    },
+    {
+      "name": "字符串处理",
+      "description": "生成字符串，适用于字符串处理题",
+      "variables": [
+        {
+          "name": "s",
+          "data_type": "字符串",
+          "source_type": "字符集合",
+          "separator": "换行",
+          "charset": "a-z",
+          "string_length": 10
+        }
+      ]
+    },
+    {
+      "name": "选择题",
+      "description": "从预定义选项中选择，适用于分类判断题",
+      "variables": [
+        {
+          "name": "choice",
+          "data_type": "字符串",
+          "source_type": "选择列表",
+          "separator": "换行",
+          "choices": ["A", "B", "C", "D"]
+        }
+      ]
+    },
+    {
+      "name": "坐标点",
+      "description": "生成二维坐标点，适用于几何计算题",
+      "variables": [
+        {
+          "name": "x",
+          "data_type": "整数",
+          "source_type": "数据范围",
+          "separator": "空格",
+          "min_value": "-100",
+          "max_value": "100"
+        },
+        {
+          "name": "y",
+          "data_type": "整数",
+          "source_type": "数据范围",
+          "separator": "换行",
+          "min_value": "-100",
+          "max_value": "100"
+        }
+      ]
+    },
+    {
+      "name": "矩阵维度+矩阵数据",
+      "description": "先输入矩阵行列数，再输入矩阵数据，适用于矩阵处理题",
+      "variables": [
+        {
+          "name": "m",
+          "data_type": "整数",
+          "source_type": "数据范围",
+          "separator": "空格",
+          "min_value": "2",
+          "max_value": "5"
+        },
+        {
+          "name": "n",
+          "data_type": "整数",
+          "source_type": "数据范围",
+          "separator": "换行",
+          "min_value": "2",
+          "max_value": "5"
+        },
+        {
+          "name": "matrix_element",
+          "data_type": "整数",
+          "source_type": "数据范围",
+          "separator": "空格",
+          "min_value": "0",
+          "max_value": "9"
+        }
+      ]
+    },
+    {
+      "name": "浮点数计算",
+      "description": "生成浮点数，适用于精度计算题",
+      "variables": [
+        {
+          "name": "x",
+          "data_type": "浮点数",
+          "source_type": "数据范围",
+          "separator": "空格",
+          "min_value": "0.1",
+          "max_value": "99.9"
+        },
+        {
+          "name": "y",
+          "data_type": "浮点数",
+          "source_type": "数据范围",
+          "separator": "换行",
+          "min_value": "0.1",
+          "max_value": "99.9"
+        }
+      ]
+    },
+    {
+      "name": "混合数据类型",
+      "description": "包含多种数据类型，适用于复杂输入格式的题目",
+      "variables": [
+        {
+          "name": "id",
+          "data_type": "整数",
+          "source_type": "数据范围",
+          "separator": "空格",
+          "min_value": "1000",
+          "max_value": "9999"
+        },
+        {
+          "name": "name",
+          "data_type": "字符串",
+          "source_type": "字符集合",
+          "separator": "空格",
+          "charset": "A-Z",
+          "string_length": 5
+        },
+        {
+          "name": "score",
+          "data_type": "浮点数",
+          "source_type": "数据范围",
+          "separator": "换行",
+          "min_value": "0.0",
+          "max_value": "100.0"
+        }
+      ]
+    },
+    {
+      "name": "图论基础",
+      "description": "生成图的节点数和边数，适用于图论算法题",
+      "variables": [
+        {
+          "name": "n",
+          "data_type": "整数",
+          "source_type": "数据范围",
+          "separator": "空格",
+          "min_value": "3",
+          "max_value": "10"
+        },
+        {
+          "name": "m",
+          "data_type": "整数",
+          "source_type": "数据范围",
+          "separator": "换行",
+          "min_value": "2",
+          "max_value": "15"
+        }
+      ]
+    }
+  ]
+}
