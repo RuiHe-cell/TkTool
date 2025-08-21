@@ -1,0 +1,58 @@
+{
+  "python": {
+    "keywords": {
+      "words": [
+        "and", "as", "assert", "break", "class", "continue", "def", "del", "elif", "else", "except", "exec", "finally", "for", "from", "global", "if", "import", "in", "is", "lambda", "not", "or", "pass",  "raise", "return", "try", "while", "with", "yield", "True", "False", "None"
+      ],
+      "color": "#0000FF",
+      "bold": true
+    },
+    "builtin_functions": {
+      "words": [
+        "print", "abs", "all", "any", "bin", "bool", "bytearray", "bytes", "callable", "chr", "classmethod", "compile", "complex", "delattr", "dict", "dir", "divmod", "enumerate", "eval", "exec", "filter", "float", "format", "frozenset", "getattr", "globals", "hasattr", "hash", "help", "hex", "id", "input", "int", "isinstance", "issubclass", "iter", "len", "list", "locals", "map", "max", "memoryview", "min", "next", "object", "oct", "open", "ord", "pow", "property", "range", "repr", "reversed", "round", "set", "setattr", "slice", "sorted", "staticmethod", "str", "sum", "super", "tuple", "type", "vars", "zip", "__import__"
+      ],
+      "color": "#800080",
+      "bold": false
+    },
+    "strings": {
+      "patterns": [
+        "\".*?\"",
+        "'.*?'",
+        "\"\"\"[\\s\\S]*?\"\"\"",
+        "'''[\\s\\S]*?'''"
+      ],
+      "color": "#008000",
+      "bold": false
+    },
+    "comments": {
+      "patterns": [
+        "#.*$"
+      ],
+      "color": "#808080",
+      "bold": false,
+      "italic": true
+    },
+    "numbers": {
+      "patterns": [
+        "\\b\\d+\\.\\d+\\b",
+        "\\b\\d+\\b"
+      ],
+      "color": "#FF6600",
+      "bold": false
+    },
+    "operators": {
+      "words": [
+        "+", "-", "*", "/", "//", "%", "**", "=", "==", "!=", "<", ">", "<=", ">=", "and", "or", "not", "&", "|", "^", "~", "<<", ">>"
+      ],
+      "color": "#FF0000",
+      "bold": false
+    },
+    "decorators": {
+      "patterns": [
+        "@\\w+"
+      ],
+      "color": "#FF8C00",
+      "bold": true
+    }
+  }
+}

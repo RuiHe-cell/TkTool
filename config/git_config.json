@@ -1,0 +1,14 @@
+{
+    "remote_name": "origin",
+    "branch_name": "main",
+    "auto_add_all": false,
+    "files_to_track": [
+        "INFO/update.json",
+        "README.md",
+        "config/"
+    ],
+    "commit_template": "更新版本信息 - {timestamp}",
+    "github_username": "",
+    "github_repo": "",
+    "github_token": ""
+}
