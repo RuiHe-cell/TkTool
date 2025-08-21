@@ -8,6 +8,13 @@ import os
 import sys
 from datetime import datetime
 
+# 导入新的更新对话框
+try:
+    from gui.update_dialog import show_update_dialog
+except ImportError:
+    # 如果导入失败，使用原来的简单对话框
+    show_update_dialog = None
+
 class UpdateChecker:
     def __init__(self, local_update_file=None, config_file=None):
         # 获取程序运行目录（兼容PyInstaller）
@@ -149,8 +156,27 @@ class UpdateChecker:
 
     def show_update_dialog(self, update_data):
         """显示更新对话框"""
-
+        
         def show_dialog():
+            # 尝试使用新的更新对话框
+            if show_update_dialog is not None:
+                try:
+                    root = tk.Tk()
+                    root.withdraw()  # 隐藏主窗口
+                    
+                    # 显示新的更新对话框
+                    result = show_update_dialog(root, update_data, self.config)
+                    
+                    # 根据用户操作更新本地文件
+                    if result in ['exe_download', 'github_opened']:
+                        self.update_local_file(update_data)
+                    
+                    root.destroy()
+                    return
+                except Exception as e:
+                    print(f"显示新对话框失败，使用默认对话框: {e}")
+            
+            # 如果新对话框不可用，使用原来的简单对话框
             root = tk.Tk()
             root.withdraw()  # 隐藏主窗口
 

@@ -1,6 +1,6 @@
 {
-    "github_raw_url": "https://raw.githubusercontent.com/your-username/your-repo/main/INFO/update.json",
-    "github_page_url": "https://github.com/your-username/your-repo/blob/main/INFO/update.json#L9-L9",
+    "github_raw_url": "https://raw.githubusercontent.com/RuiHe-cell/TkTool/main/INFO/update.json",
+    "github_page_url": "https://github.com/RuiHe-cell/TkTool/blob/main/INFO/update.json#L9-L9",
     "check_on_startup": true,
     "timeout": 10,
     "auto_update_local": true,

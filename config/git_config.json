@@ -8,7 +8,7 @@
         "config/"
     ],
     "commit_template": "更新版本信息 - {timestamp}",
-    "github_username": "",
-    "github_repo": "",
+    "github_username": "RuiHe-cell",
+    "github_repo": "TkTool",
     "github_token": ""
 }
