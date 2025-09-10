@@ -7,6 +7,5 @@
         "3. 新增支持：现在允许用户输入测试数据，得到结果，自己检查答案是否正确，并支持连续测试数据输入",
         "4. 修复bug: 现在导入库的时候，重新支持方法弹出，如random弹出randint，并自动补充括号"
     ],
-    "line": "https://github.com/RuiHe-cell/TkTool/releases/exe/数据生成工具1.2.0.exe"
+    "line": "https://github.com/RuiHe-cell/TkTool/tree/main/exe/数据生成工具1.2.0.exe"
 }
-
