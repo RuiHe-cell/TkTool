@@ -1,12 +1,12 @@
 {
     "level": "1.2.0",
-    "update_time": "2025-01-20",
+    "update_time": "2025-08-23",
     "update_content": [
-        "1. 新增功能：三按钮更新对话框",
-        "2. 新增功能：支持exe安装包下载",
-        "3. 新增功能：优化用户界面体验",
-        "4. 修复bug：解决对话框显示问题",
-        "5. 优化：提升程序启动速度"
+        "1. 新增功能：现在代码数据分隔符可以选择无",
+        "2. 新增支持：现在字符长度支持使用变量动态获取",
+        "3. 新增支持：现在允许用户输入测试数据，得到结果，自己检查答案是否正确，并支持连续测试数据输入",
+        "4. 修复bug: 现在导入库的时候，重新支持方法弹出，如random弹出randint，并自动补充括号"
     ],
-    "line": "https://github.com/RuiHe-cell/TkTool/releases/download/v1.2.0/TkTool-v1.2.0.exe"
+    "line": "https://github.com/RuiHe-cell/TkTool/releases/exe/数据生成工具1.2.0.exe"
 }
+

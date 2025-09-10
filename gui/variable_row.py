@@ -82,7 +82,7 @@ class VariableRow:
         # 分隔符
         ttk.Label(self.frame, text="分隔符:").grid(row=0, column=8, sticky=tk.W, padx=(0, 5))
         separator_combo = ttk.Combobox(self.frame, textvariable=self.separator,
-                                     values=["换行", "空格", "制表符", "逗号", "分号"],
+                                     values=["无", "换行", "空格", "制表符", "逗号", "分号"],
                                      state="readonly", width=8)
         separator_combo.grid(row=0, column=9, sticky=tk.W, padx=(0, 10))
         
@@ -133,7 +133,7 @@ class VariableRow:
             length_entry.grid(row=0, column=5, sticky=tk.W)
             
             # 添加长度格式说明
-            length_example = "长度格式: 10 (固定) 或 1,10 (随机1-10)"
+            length_example = "长度格式: 10 (固定) 或 1,10 (随机1-10) 或 1,n (使用变量n)"
             ttk.Label(self.source_config_frame, text=length_example, foreground="blue").grid(row=1, column=4, columnspan=2, sticky=tk.W, pady=(2, 0))
     
     def create_choice_config(self):
@@ -166,7 +166,7 @@ class VariableRow:
         
         # 如果是字符串类型，添加长度格式说明
         if self.data_type.get() == "字符串":
-            length_example = "长度格式: 10 (固定长度) 或 1,10 (随机长度1-10)"
+            length_example = "长度格式: 10 (固定长度) 或 1,10 (随机长度1-10) 或 1,n (使用变量n)"
             ttk.Label(self.source_config_frame, text=length_example, foreground="blue").grid(row=2, column=1, columnspan=3, sticky=tk.W, pady=(2, 0))
     
     def create_code_config(self):

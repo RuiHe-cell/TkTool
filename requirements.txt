@@ -1,0 +1,55 @@
+# TkTool - 测试数据生成器软件
+# Python依赖包列表
+
+# HTTP请求库 - 用于更新检查和API调用
+requests>=2.25.1
+
+# JSON处理 - Python内置
+# json  # Python内置
+
+# 文件和系统操作 - Python内置
+# os, sys, subprocess  # Python内置
+
+# 日期时间处理 - Python内置
+# datetime  # Python内置
+
+# 线程处理 - Python内置
+# threading  # Python内置
+
+# 正则表达式 - Python内置
+# re  # Python内置
+
+# 加密和哈希 - Python内置
+# hashlib  # Python内置
+
+# Base64编码 - Python内置
+# base64  # Python内置
+
+# 配置文件处理 - Python内置
+# configparser  # Python内置
+
+# 路径处理 - Python内置
+# pathlib  # Python内置
+
+# 类型提示 - Python内置
+# typing  # Python内置
+
+# 可选依赖（如果需要更高级功能）
+# cryptography>=3.4.8  # 高级加密功能
+# pillow>=8.3.2  # 图像处理（如果需要处理图片）
+# pyinstaller>=4.5.1  # 打包成exe文件
+
+# 开发和测试依赖
+# pytest>=6.2.4  # 单元测试
+# pytest-cov>=2.12.1  # 测试覆盖率
+
+# 注意：
+# 1. tkinter是Python标准库的一部分，通常不需要单独安装
+# 2. 大部分依赖都是Python内置模块，不需要pip install
+# 3. 主要的外部依赖只有requests库
+# 4. 如果使用conda环境，可能需要: conda install tk
+
+# 安装命令：
+# pip install -r requirements.txt
+# 或者只安装核心依赖：
+# pip install requests

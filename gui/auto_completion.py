@@ -50,6 +50,9 @@ class AutoCompletion:
         
         # 右符号集合，用于快速查找
         self.right_symbols = set(self.symbol_pairs.values())
+        
+        # 绑定鼠标点击事件，点击其他位置时关闭补全窗口
+        self.text_widget.bind('<Button-1>', self.handle_mouse_click)
     
     def show_completion(self):
         """显示自动补全窗口"""
@@ -225,7 +228,6 @@ class AutoCompletion:
         
         try:
             if obj_type == 'str':
-                # 创建一个字符串实例并获取其方法
                 sample_obj = ""
             elif obj_type == 'list':
                 sample_obj = []
@@ -240,29 +242,32 @@ class AutoCompletion:
             elif obj_type == 'float':
                 sample_obj = 0.0
             elif obj_type == 'file':
-                # 对于文件对象，我们需要特殊处理
                 import io
                 sample_obj = io.StringIO()
+            elif obj_type.startswith('module_'):
+                # 处理模块类型，提取真实的模块名
+                module_name = obj_type[7:]  # 移除 'module_' 前缀
+                try:
+                    sample_obj = __import__(module_name)
+                except ImportError:
+                    return []
             else:
-                # 尝试动态导入模块
+                # 尝试动态导入模块或类
                 try:
                     if '.' in obj_type:
                         module_name, class_name = obj_type.rsplit('.', 1)
                         module = __import__(module_name, fromlist=[class_name])
                         if hasattr(module, class_name):
                             sample_obj = getattr(module, class_name)
-                            # 如果是类，尝试创建实例
                             if isinstance(sample_obj, type):
                                 try:
                                     sample_obj = sample_obj()
                                 except:
-                                    # 如果无法实例化，直接使用类
                                     pass
                         else:
                             return []
                     else:
-                        module = __import__(obj_type)
-                        sample_obj = module
+                        sample_obj = __import__(obj_type)
                 except ImportError:
                     return []
             
@@ -275,48 +280,30 @@ class AutoCompletion:
                     continue
                 
                 try:
-                    # 检查是否是可调用的方法
                     attr_obj = getattr(sample_obj, attr)
                     if callable(attr_obj):
-                        # 检查是否需要括号
-                        needs_parentheses = True
-                        try:
-                            import inspect
-                            sig = inspect.signature(attr_obj)
-                            # 如果方法有必需参数（除了self），则需要括号
-                            params = list(sig.parameters.values())
-                            if params and params[0].name == 'self':
-                                params = params[1:]  # 移除self参数
-                            
-                            # 如果没有必需参数，或者所有参数都有默认值
-                            required_params = [p for p in params if p.default == inspect.Parameter.empty]
-                            if not required_params:
-                                needs_parentheses = True  # 仍然显示括号，但用户可以直接按Tab补全
-                        except:
-                            needs_parentheses = True
-                        
-                        display_text = f"{attr}()" if needs_parentheses else attr
+                        # 对于方法，添加auto_parentheses标记
                         methods.append({
                             'text': attr,
-                            'display': display_text,
-                            'type': 'method'
+                            'display': f"{attr}()",
+                            'type': 'method',
+                            'auto_parentheses': True
                         })
                     else:
                         # 属性（非方法）
                         methods.append({
                             'text': attr,
                             'display': attr,
-                            'type': 'property'
+                            'type': 'property',
+                            'auto_parentheses': False
                         })
                 except:
-                    # 如果无法获取属性，跳过
                     continue
             
             # 按名称排序，方法优先
             methods.sort(key=lambda x: (x['type'] != 'method', x['text']))
             
         except Exception as e:
-            # 如果出现任何错误，返回空列表
             pass
         
         return methods
@@ -627,6 +614,40 @@ class AutoCompletion:
         except Exception as e:
             deBug.info(f"符号配对插入错误: {e}")
             return None
+    
+    def handle_mouse_click(self, event):
+        """
+        处理鼠标点击事件
+        当用户点击文本编辑器的其他位置时，关闭补全窗口
+        
+        Args:
+            event: 鼠标点击事件
+        """
+        try:
+            # 如果补全窗口存在，则关闭它
+            if self.completion_window:
+                # 获取点击位置
+                click_x = event.x_root
+                click_y = event.y_root
+                
+                # 获取补全窗口的位置和大小
+                if self.completion_window.winfo_exists():
+                    window_x = self.completion_window.winfo_rootx()
+                    window_y = self.completion_window.winfo_rooty()
+                    window_width = self.completion_window.winfo_width()
+                    window_height = self.completion_window.winfo_height()
+                    
+                    # 检查点击是否在补全窗口内
+                    if not (window_x <= click_x <= window_x + window_width and
+                            window_y <= click_y <= window_y + window_height):
+                        # 点击在补全窗口外，关闭补全窗口
+                        self.hide_completion()
+        except Exception as e:
+            # 如果出现任何错误，直接关闭补全窗口
+            self.hide_completion()
+        
+        # 返回None让事件继续传播，不影响正常的文本编辑功能
+        return None
     
     def handle_right_symbol(self, right_symbol):
         """处理右符号输入"""

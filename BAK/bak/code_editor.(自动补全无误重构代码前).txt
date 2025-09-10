@@ -1,0 +1,1149 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+代码编辑器组件
+功能：提供带有基本编辑功能和语法高亮的代码编辑窗口
+"""
+
+import tkinter as tk
+from tkinter import ttk, messagebox
+from typing import Optional, Callable
+from .SyntaxHighlighter import SyntaxHighlighter
+import keyword
+import builtins
+import re
+
+
+# 添加DeepSeek相关导入
+import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from deepseek_api.deepseek_dialog import DeepSeekDialog, ApiKeyDialog
+from deepseek_api.api_key_manager import ApiKeyManager
+from deepseek_api.prompt_template import generate_test_data_prompt
+
+
+class CodeEditor:
+    """代码编辑器类"""
+
+    def __init__(self, parent, title: str = "代码编辑器",
+                 initial_code: str = "",
+                 template_code: str = "",
+                 on_save: Optional[Callable[[str], None]] = None,
+                 width: int = 700, height: int = 600,
+                 language: str = "python"):
+        """
+        初始化代码编辑器
+        
+        Args:
+            parent: 父窗口
+            title: 编辑器窗口标题
+            initial_code: 初始代码内容
+            template_code: 模板代码（当initial_code为空时使用）
+            on_save: 保存回调函数
+            width: 窗口宽度
+            height: 窗口高度
+            language: 编程语言类型
+        """
+        self.parent = parent
+        self.title = title
+        self.initial_code = initial_code
+        self.template_code = template_code
+        self.on_save = on_save
+        self.width = width
+        self.height = height
+        self.language = language
+
+        self.editor_window = None
+        self.code_text = None
+        self.saved_code = ""
+        self.highlighter = None
+
+        # 自动补全相关属性
+        self.completion_window = None
+        self.completion_listbox = None
+        self.completion_candidates = []
+        self.completion_start_pos = None
+        self.completion_prefix = ""
+        
+        # Python 关键字和内置函数
+        self.python_keywords = keyword.kwlist
+        self.python_builtins = dir(builtins)
+
+    def show(self) -> str:
+        """显示编辑器窗口并返回编辑后的代码"""
+        self.create_editor_window()
+        self.parent.wait_window(self.editor_window)
+        return self.saved_code
+
+    def create_editor_window(self):
+        """创建编辑器窗口"""
+        self.editor_window = tk.Toplevel(self.parent)
+        self.editor_window.title(self.title)
+        self.editor_window.geometry(f"{self.width}x{self.height}")
+        self.editor_window.transient(self.parent.winfo_toplevel())
+        self.editor_window.grab_set()
+
+        # 创建主框架
+        main_frame = ttk.Frame(self.editor_window)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        # 创建文本编辑区域
+        self.create_text_area(main_frame)
+
+        # 创建按钮区域
+        self.create_button_area(main_frame)
+
+        # 初始化代码内容
+        self.initialize_code_content()
+
+        # 设置焦点到文本框
+        self.code_text.focus_set()
+
+    def create_embedded_editor(self, parent):
+        """创建嵌入式编辑器（不是弹窗模式）"""
+        # 创建文本编辑区域
+        self.create_text_area(parent)
+
+        # 绑定事件
+        self.bind_editor_events()
+
+        # 初始化语法高亮器
+        if not self.highlighter:
+            self.highlighter = SyntaxHighlighter(self.code_text, self.language)
+
+        # 初始化代码内容
+        self.initialize_code_content()
+
+        # 设置焦点到文本框
+        self.code_text.focus_set()
+
+    def create_text_area(self, parent):
+        """创建文本编辑区域"""
+        text_frame = ttk.Frame(parent)
+        text_frame.pack(fill=tk.BOTH, expand=True)
+
+        # 代码文本框
+        self.code_text = tk.Text(text_frame,
+                                 wrap=tk.NONE,
+                                 font=("Consolas", 11),
+                                 insertwidth=2,
+                                 selectbackground="#316AC5",
+                                 selectforeground="white",
+                                 bg="#FFFFFF",
+                                 fg="#000000",
+                                 insertbackground="#000000",
+                                 undo=True,  # 启用撤销功能
+                                 maxundo=50)  # 设置最大撤销次数
+
+        # 滚动条
+        v_scrollbar = ttk.Scrollbar(text_frame, orient=tk.VERTICAL, command=self.code_text.yview)
+        h_scrollbar = ttk.Scrollbar(text_frame, orient=tk.HORIZONTAL, command=self.code_text.xview)
+        self.code_text.config(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
+
+        # 布局
+        self.code_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        v_scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        h_scrollbar.grid(row=1, column=0, sticky=(tk.W, tk.E))
+
+        text_frame.columnconfigure(0, weight=1)
+        text_frame.rowconfigure(0, weight=1)
+
+        # 创建语法高亮器
+        self.highlighter = SyntaxHighlighter(self.code_text, self.language)
+
+        # 绑定编辑功能事件
+        self.bind_editor_events()
+
+    def bind_editor_events(self):
+        """绑定编辑器事件"""
+        # Tab键转换为4个空格
+        self.code_text.bind('<Tab>', self.handle_tab)
+
+        # Shift+Tab减少缩进
+        self.code_text.bind('<Shift-Tab>', self.handle_shift_tab)
+
+        # Enter键自动缩进
+        self.code_text.bind('<Return>', self.handle_return)
+
+        # 智能退格键
+        self.code_text.bind('<BackSpace>', self.handle_backspace)
+
+        # Ctrl+S保存
+        self.code_text.bind('<Control-s>', lambda e: self.save_code())
+
+        # Ctrl+/ 快速注释/取消注释
+        self.code_text.bind('<Control-slash>', self.toggle_comment)
+
+        # Ctrl+Z 撤销
+        self.code_text.bind('<Control-z>', self.handle_undo)
+
+        # Ctrl+Y 重做 (或 Ctrl+Shift+Z)
+        self.code_text.bind('<Control-y>', self.handle_redo)
+        self.code_text.bind('<Control-Shift-Z>', self.handle_redo)
+
+        # 括号自动补全
+        self.code_text.bind('<KeyPress>', self.handle_auto_complete)
+
+        # 绑定内容变化事件以触发语法高亮
+        self.code_text.bind('<KeyRelease>', self.on_key_release)
+        self.code_text.bind('<Button-1>', self.hide_completion)
+        # 注释掉这行，避免焦点丢失时立即隐藏补全窗口
+        # self.code_text.bind('<FocusOut>', self.hide_completion)
+        self.code_text.bind('<ButtonRelease-1>', self.on_text_change)
+        # 绑定粘贴事件
+        self.code_text.bind('<Control-v>', self.on_paste)
+        # 绑定删除事件
+        self.code_text.bind('<Delete>', self.on_text_change)
+
+        # 绑定滚动事件以触发可见区域高亮
+        self.code_text.bind('<MouseWheel>', self.on_scroll)
+        self.code_text.bind('<Button-4>', self.on_scroll)  # Linux
+        self.code_text.bind('<Button-5>', self.on_scroll)  # Linux
+
+        # 初始化语法高亮器
+        self.syntax_highlighter = SyntaxHighlighter(self.code_text, self.language)
+
+    def on_text_change(self, event=None):
+        """文本内容变化时的处理（优化版本）"""
+        if self.highlighter:
+            # 使用防抖的语法高亮
+            self.highlighter.highlight_syntax_debounced()
+    
+    def on_paste(self, event=None):
+        """处理粘贴事件（优化版本）"""
+        if self.highlighter:
+            # 粘贴后延迟触发防抖高亮
+            self.code_text.after(100, self.highlighter.highlight_syntax_debounced)
+        return None
+    
+    def on_scroll(self, event=None):
+        """滚动时触发可见区域高亮"""
+        if self.highlighter:
+            # 延迟触发以避免滚动时频繁更新
+            self.code_text.after(200, self.highlighter.highlight_visible_area)
+
+    def on_key_release(self, event):
+        """按键释放事件处理"""
+        # 如果补全窗口开启，某些按键应该被补全窗口处理
+        if self.completion_window:
+            if event.keysym in ['Up', 'Down']:
+                # 上下键导航补全列表
+                self.handle_completion_navigation(event)
+                return "break"
+            elif event.keysym in ['Return', 'Tab']:
+                # 回车或Tab接受补全
+                self.accept_completion()
+                return "break"
+            elif event.keysym == 'Escape':
+                # Escape隐藏补全窗口
+                self.hide_completion()
+                return "break"
+            elif event.keysym in ['Left', 'Right']:
+                # 左右键隐藏补全窗口
+                self.hide_completion()
+
+        # 处理自动补全触发
+        if event.char and event.char.isprintable():
+            # 先处理文本变化，再显示补全
+            self.on_text_change(event)
+            self.show_completion()
+            return
+
+        # 对于其他按键，处理文本变化
+        self.on_text_change(event)
+
+    def handle_completion_navigation(self, event):
+        """处理补全窗口的导航键"""
+        if not self.completion_listbox:
+            return
+
+        current_selection = self.completion_listbox.curselection()
+        if not current_selection:
+            self.completion_listbox.selection_set(0)
+            return
+
+        current_index = current_selection[0]
+
+        if event.keysym == 'Down':
+            new_index = min(current_index + 1, self.completion_listbox.size() - 1)
+        elif event.keysym == 'Up':
+            new_index = max(current_index - 1, 0)
+        else:
+            return
+
+        self.completion_listbox.selection_clear(0, tk.END)
+        self.completion_listbox.selection_set(new_index)
+        self.completion_listbox.see(new_index)
+
+    def show_completion(self):
+        """显示自动补全窗口"""
+        try:
+            # 获取当前光标位置
+            cursor_pos = self.code_text.index(tk.INSERT)
+            line, col = map(int, cursor_pos.split('.'))
+
+            # 获取当前行内容
+            line_start = f"{line}.0"
+            line_end = f"{line}.end"
+            line_content = self.code_text.get(line_start, line_end)
+
+            # 检查是否是对象方法调用（如 a.）
+            dot_pos = line_content.rfind('.', 0, col)
+            if dot_pos != -1 and dot_pos < col:
+                # 找到点操作符，获取对象名和方法前缀
+                obj_start = dot_pos - 1
+                while obj_start >= 0 and (line_content[obj_start].isalnum() or line_content[obj_start] == '_'):
+                    obj_start -= 1
+                obj_start += 1
+
+                object_name = line_content[obj_start:dot_pos]
+                method_prefix = line_content[dot_pos + 1:col]
+
+                # 获取对象方法补全候选项
+                candidates = self.get_object_method_candidates(object_name, method_prefix, line_content)
+
+                if candidates:
+                    # 保存补全信息
+                    self.completion_prefix = method_prefix
+                    self.completion_start_pos = f"{line}.{dot_pos + 1}"
+                    self.completion_candidates = candidates
+                    # 创建或更新补全窗口
+                    self.create_completion_window(cursor_pos)
+                    return
+                else:
+                    self.hide_completion()
+                    return
+
+            # 常规标识符补全
+            # 找到当前单词的开始位置
+            word_start = col
+            while word_start > 0 and (line_content[word_start - 1].isalnum() or line_content[word_start - 1] == '_'):
+                word_start -= 1
+
+            # 获取当前输入的前缀
+            prefix = line_content[word_start:col]
+
+            if len(prefix) < 1:  # 至少输入1个字符才显示补全
+                self.hide_completion()
+                return
+
+            # 获取补全候选项
+            candidates = self.get_completion_candidates(prefix)
+
+            if not candidates:
+                self.hide_completion()
+                return
+
+            # 保存补全信息
+            self.completion_prefix = prefix
+            self.completion_start_pos = f"{line}.{word_start}"
+            self.completion_candidates = candidates
+
+            # 创建或更新补全窗口
+            self.create_completion_window(cursor_pos)
+
+        except Exception as e:
+            print(f"补全显示错误: {e}")
+            self.hide_completion()
+
+    def get_object_method_candidates(self, object_name, method_prefix, full_line):
+        """获取对象方法补全候选项"""
+        candidates = []
+        method_prefix_lower = method_prefix.lower()
+
+        # 尝试分析对象类型
+        object_type = self.infer_object_type(object_name, full_line)
+
+        # 根据对象类型获取方法
+        methods = self.get_methods_for_type(object_type)
+
+        for method_name, method_info in methods.items():
+            if method_name.lower().startswith(method_prefix_lower):
+                candidates.append((method_name, method_info['type'], method_info.get('auto_parentheses', False)))
+
+        # 排序候选项：常用方法优先
+        candidates.sort(key=lambda x: (x[1] != "method", x[0].lower()))
+
+        return candidates[:15]  # 限制显示数量
+
+    def infer_object_type(self, object_name, full_line):
+        """推断对象类型"""
+        # 获取整个文件内容进行分析
+        try:
+            code = self.code_text.get(1.0, tk.END)
+            lines = code.split('\n')
+
+            # 查找变量赋值语句
+            for line in lines:
+                line = line.strip()
+                if f"{object_name} = " in line:
+                    # 简单的类型推断
+                    if '"' in line or "'" in line:
+                        return "str"
+                    elif "[" in line and "]" in line:
+                        return "list"
+                    elif "{" in line and "}" in line:
+                        if ":" in line:
+                            return "dict"
+                        else:
+                            return "set"
+                    elif line.endswith(".split(") or ".strip(" in line:
+                        return "str"
+                    elif "int(" in line:
+                        return "int"
+                    elif "float(" in line:
+                        return "float"
+                    elif "range(" in line:
+                        return "range"
+
+            # 如果没有找到明确的赋值，返回通用类型
+            return "object"
+
+        except:
+            return "object"
+
+    def get_methods_for_type(self, object_type):
+        """根据类型获取可用方法"""
+        methods = {}
+
+        if object_type == "str":
+            str_methods = {
+                'upper': {'type': 'method', 'auto_parentheses': True},
+                'lower': {'type': 'method', 'auto_parentheses': True},
+                'strip': {'type': 'method', 'auto_parentheses': True},
+                'lstrip': {'type': 'method', 'auto_parentheses': True},
+                'rstrip': {'type': 'method', 'auto_parentheses': True},
+                'split': {'type': 'method', 'auto_parentheses': True},
+                'join': {'type': 'method', 'auto_parentheses': True},
+                'replace': {'type': 'method', 'auto_parentheses': True},
+                'find': {'type': 'method', 'auto_parentheses': True},
+                'index': {'type': 'method', 'auto_parentheses': True},
+                'startswith': {'type': 'method', 'auto_parentheses': True},
+                'endswith': {'type': 'method', 'auto_parentheses': True},
+                'isdigit': {'type': 'method', 'auto_parentheses': True},
+                'isalpha': {'type': 'method', 'auto_parentheses': True},
+                'isalnum': {'type': 'method', 'auto_parentheses': True},
+                'capitalize': {'type': 'method', 'auto_parentheses': True},
+                'title': {'type': 'method', 'auto_parentheses': True},
+                'format': {'type': 'method', 'auto_parentheses': True},
+                'count': {'type': 'method', 'auto_parentheses': True},
+                'encode': {'type': 'method', 'auto_parentheses': True},
+                'decode': {'type': 'method', 'auto_parentheses': True}
+            }
+            methods.update(str_methods)
+
+        elif object_type == "list":
+            list_methods = {
+                'append': {'type': 'method', 'auto_parentheses': True},
+                'extend': {'type': 'method', 'auto_parentheses': True},
+                'insert': {'type': 'method', 'auto_parentheses': True},
+                'remove': {'type': 'method', 'auto_parentheses': True},
+                'pop': {'type': 'method', 'auto_parentheses': True},
+                'clear': {'type': 'method', 'auto_parentheses': True},
+                'index': {'type': 'method', 'auto_parentheses': True},
+                'count': {'type': 'method', 'auto_parentheses': True},
+                'sort': {'type': 'method', 'auto_parentheses': True},
+                'reverse': {'type': 'method', 'auto_parentheses': True},
+                'copy': {'type': 'method', 'auto_parentheses': True}
+            }
+            methods.update(list_methods)
+
+        elif object_type == "dict":
+            dict_methods = {
+                'keys': {'type': 'method', 'auto_parentheses': True},
+                'values': {'type': 'method', 'auto_parentheses': True},
+                'items': {'type': 'method', 'auto_parentheses': True},
+                'get': {'type': 'method', 'auto_parentheses': True},
+                'pop': {'type': 'method', 'auto_parentheses': True},
+                'update': {'type': 'method', 'auto_parentheses': True},
+                'clear': {'type': 'method', 'auto_parentheses': True},
+                'copy': {'type': 'method', 'auto_parentheses': True},
+                'setdefault': {'type': 'method', 'auto_parentheses': True}
+            }
+            methods.update(dict_methods)
+
+        # 所有对象都有的通用方法
+        common_methods = {
+            '__str__': {'type': 'method', 'auto_parentheses': True},
+            '__repr__': {'type': 'method', 'auto_parentheses': True},
+            '__len__': {'type': 'method', 'auto_parentheses': True},
+            '__class__': {'type': 'attribute', 'auto_parentheses': False},
+            '__dict__': {'type': 'attribute', 'auto_parentheses': False}
+        }
+        methods.update(common_methods)
+
+        return methods
+
+    def get_completion_candidates(self, prefix):
+        """获取补全候选项"""
+        candidates = []
+        prefix_lower = prefix.lower()
+
+        # Python 关键字
+        for keyword_item in self.python_keywords:
+            if keyword_item.lower().startswith(prefix_lower):
+                candidates.append((keyword_item, "keyword", False))
+
+        # Python 内置函数
+        for builtin in self.python_builtins:
+            if not builtin.startswith('_') and builtin.lower().startswith(prefix_lower):
+                # 内置函数需要自动添加括号
+                auto_parentheses = builtin in ['print', 'len', 'str', 'int', 'float', 'list', 'dict', 'set', 'tuple', 'range', 'enumerate', 'zip', 'map', 'filter', 'sorted', 'max', 'min', 'sum', 'abs', 'round', 'type', 'isinstance', 'hasattr', 'getattr', 'setattr', 'input', 'open']
+                candidates.append((builtin, "builtin", auto_parentheses))
+
+        # 当前文件中的标识符
+        file_identifiers = self.extract_identifiers_from_code()
+        for identifier in file_identifiers:
+            if identifier.lower().startswith(prefix_lower) and identifier != prefix:
+                candidates.append((identifier, "identifier", False))
+
+        # 去重并排序
+        unique_candidates = list(set(candidates))
+        unique_candidates.sort(key=lambda x: (x[1] != "keyword", x[1] != "builtin", x[0].lower()))
+
+        return unique_candidates[:20]  # 限制显示数量
+
+    def extract_identifiers_from_code(self):
+        """从当前代码中提取标识符"""
+        try:
+            code = self.code_text.get(1.0, tk.END)
+            # 使用正则表达式提取标识符
+            pattern = r'\b[a-zA-Z_][a-zA-Z0-9_]*\b'
+            identifiers = re.findall(pattern, code)
+            # 过滤掉关键字和内置函数
+            filtered = []
+            for identifier in identifiers:
+                if (identifier not in self.python_keywords and
+                        identifier not in self.python_builtins and
+                        len(identifier) > 1):
+                    filtered.append(identifier)
+            return list(set(filtered))
+        except:
+            return []
+
+    def create_completion_window(self, cursor_pos):
+        """创建自动补全窗口"""
+        if self.completion_window:
+            self.completion_window.destroy()
+
+        # 创建顶层窗口
+        self.completion_window = tk.Toplevel(self.code_text)
+        self.completion_window.wm_overrideredirect(True)
+        self.completion_window.configure(bg='white', relief='solid', bd=1)
+
+        # 创建列表框
+        self.completion_listbox = tk.Listbox(
+            self.completion_window,
+            height=min(10, len(self.completion_candidates)),
+            font=('Consolas', 9),
+            selectmode=tk.SINGLE,
+            bg='white',
+            fg='black',
+            selectbackground='#0078d4',
+            selectforeground='white',
+            relief='flat',
+            bd=0
+        )
+        self.completion_listbox.pack(fill=tk.BOTH, expand=True)
+
+        # 填充候选项
+        for candidate_info in self.completion_candidates:
+            if len(candidate_info) == 3:
+                candidate, candidate_type, auto_parentheses = candidate_info
+            else:
+                candidate, candidate_type = candidate_info
+                auto_parentheses = False
+            
+            # 根据类型显示不同的图标或标识
+            if candidate_type == "method":
+                display_text = f"🔧 {candidate}"
+            elif candidate_type == "attribute":
+                display_text = f"📋 {candidate}"
+            elif candidate_type == "builtin":
+                display_text = f"⚙️ {candidate}"
+            elif candidate_type == "keyword":
+                display_text = f"🔑 {candidate}"
+            else:
+                display_text = f"📝 {candidate}"
+                
+            self.completion_listbox.insert(tk.END, display_text)
+
+        # 选中第一项
+        if self.completion_candidates:
+            self.completion_listbox.selection_set(0)
+
+        # 绑定补全窗口的键盘事件
+        self.completion_listbox.bind('<Double-Button-1>', lambda e: self.accept_completion())
+        self.completion_listbox.bind('<Return>', lambda e: self.accept_completion())
+        self.completion_listbox.bind('<Tab>', lambda e: self.accept_completion())
+        self.completion_listbox.bind('<Escape>', lambda e: self.hide_completion())
+        self.completion_listbox.bind('<Up>', self.handle_listbox_navigation)
+        self.completion_listbox.bind('<Down>', self.handle_listbox_navigation)
+
+        # 计算窗口位置
+        self.position_completion_window(cursor_pos)
+
+    def handle_listbox_navigation(self, event):
+        """处理补全列表框的导航"""
+        current_selection = self.completion_listbox.curselection()
+        if not current_selection:
+            self.completion_listbox.selection_set(0)
+            return "break"
+
+        current_index = current_selection[0]
+
+        if event.keysym == 'Down':
+            new_index = min(current_index + 1, self.completion_listbox.size() - 1)
+        elif event.keysym == 'Up':
+            new_index = max(current_index - 1, 0)
+        else:
+            return
+
+        self.completion_listbox.selection_clear(0, tk.END)
+        self.completion_listbox.selection_set(new_index)
+        self.completion_listbox.see(new_index)
+        return "break"
+
+    def position_completion_window(self, cursor_pos):
+        """定位补全窗口位置"""
+        try:
+            # 获取光标在屏幕上的位置
+            bbox = self.code_text.bbox(cursor_pos)
+            if bbox:
+                x, y, width, height = bbox
+                # 转换为屏幕坐标
+                screen_x = self.code_text.winfo_rootx() + x
+                screen_y = self.code_text.winfo_rooty() + y + height + 2
+
+                # 确保窗口不会超出屏幕边界
+                screen_width = self.completion_window.winfo_screenwidth()
+                screen_height = self.completion_window.winfo_screenheight()
+
+                # 更新窗口以获取实际大小
+                self.completion_window.update_idletasks()
+                window_width = self.completion_window.winfo_reqwidth()
+                window_height = self.completion_window.winfo_reqheight()
+
+                # 调整位置避免超出屏幕
+                if screen_x + window_width > screen_width:
+                    screen_x = screen_width - window_width - 10
+                if screen_y + window_height > screen_height:
+                    screen_y = self.code_text.winfo_rooty() + y - window_height - 2
+
+                self.completion_window.geometry(f"+{screen_x}+{screen_y}")
+        except:
+            # 如果定位失败，使用默认位置
+            self.completion_window.geometry("+100+100")
+
+    def accept_completion(self):
+        """接受当前选中的补全项"""
+        if not self.completion_listbox or not self.completion_candidates:
+            return
+
+        current_selection = self.completion_listbox.curselection()
+        if not current_selection:
+            return
+
+        selected_index = current_selection[0]
+        candidate_info = self.completion_candidates[selected_index]
+
+        if len(candidate_info) == 3:
+            selected_candidate, candidate_type, auto_parentheses = candidate_info
+        else:
+            selected_candidate, candidate_type = candidate_info
+            auto_parentheses = False
+
+        # 计算当前输入的结束位置
+        line, col = map(int, self.completion_start_pos.split('.'))
+        current_end_pos = f"{line}.{col + len(self.completion_prefix)}"
+
+        # 替换文本 - 使用保存的位置而不是当前光标位置
+        self.code_text.delete(self.completion_start_pos, current_end_pos)
+
+        # 插入补全文本
+        insert_text = selected_candidate
+        if auto_parentheses and candidate_type in ["builtin", "method"]:
+            insert_text += "()"
+            # 将光标放在括号之间
+            self.code_text.insert(self.completion_start_pos, insert_text)
+            new_cursor_pos = f"{line}.{col + len(selected_candidate) + 1}"
+            self.code_text.mark_set(tk.INSERT, new_cursor_pos)
+        else:
+            self.code_text.insert(self.completion_start_pos, insert_text)
+            # 设置光标到补全文本的末尾
+            new_cursor_pos = f"{line}.{col + len(selected_candidate)}"
+            self.code_text.mark_set(tk.INSERT, new_cursor_pos)
+
+        # 隐藏补全窗口
+        self.hide_completion()
+
+        # 触发语法高亮
+        self.on_text_change()
+
+    def hide_completion(self, event=None):
+        """隐藏补全窗口"""
+        if self.completion_window:
+            self.completion_window.destroy()
+            self.completion_window = None
+            self.completion_listbox = None
+            self.completion_candidates = []
+            self.completion_start_pos = None
+            self.completion_prefix = ""
+
+    # 修改现有的 handle_tab 和 handle_return 方法
+    def handle_tab(self, event):
+        """处理Tab键"""
+        # 如果补全窗口打开，接受补全
+        if self.completion_window:
+            self.accept_completion()
+            return "break"
+
+        # 原有的Tab处理逻辑
+        try:
+            current_pos = self.code_text.index(tk.INSERT)
+            line_start = current_pos.split('.')[0] + '.0'
+            line_content = self.code_text.get(line_start, current_pos)
+
+            if self.code_text.tag_ranges(tk.SEL):
+                # 有选中文本，增加缩进
+                self.indent_selection()
+            else:
+                # 插入4个空格
+                self.code_text.insert(tk.INSERT, "    ")
+
+            # 触发语法高亮
+            self.on_text_change()
+
+        except Exception as e:
+            print(f"Tab处理错误: {e}")
+
+        return "break"
+
+    def handle_return(self, event):
+        """处理回车键"""
+        # 如果补全窗口打开，接受补全
+        if self.completion_window:
+            self.accept_completion()
+            return "break"
+
+        # 原有的回车处理逻辑
+        try:
+            current_pos = self.code_text.index(tk.INSERT)
+            current_line = int(current_pos.split('.')[0])
+            line_start = f"{current_line}.0"
+            line_content = self.code_text.get(line_start, current_pos)
+
+            # 计算当前行的缩进
+            indent = ""
+            for char in line_content:
+                if char == ' ':
+                    indent += ' '
+                elif char == '\t':
+                    indent += '\t'
+                else:
+                    break
+
+            # 检查是否需要增加缩进
+            stripped_line = line_content.strip()
+            if stripped_line.endswith(':'):
+                indent += "    "  # 增加4个空格的缩进
+
+            # 插入换行和缩进
+            self.code_text.insert(tk.INSERT, "\n" + indent)
+
+            # 触发语法高亮
+            self.on_text_change()
+
+        except Exception as e:
+            print(f"回车处理错误: {e}")
+
+        return "break"
+
+    def toggle_comment(self, event):
+        """切换注释状态（支持多行）"""
+        try:
+            # 获取选中的文本范围
+            if self.code_text.tag_ranges(tk.SEL):
+                # 有选中文本，处理选中的行
+                start_index = self.code_text.index(tk.SEL_FIRST)
+                end_index = self.code_text.index(tk.SEL_LAST)
+            else:
+                # 没有选中文本，处理当前行
+                current_line = self.code_text.index(tk.INSERT).split('.')[0]
+                start_index = f"{current_line}.0"
+                end_index = f"{current_line}.end"
+
+            # 获取起始和结束行号
+            start_line = int(start_index.split('.')[0])
+            end_line = int(end_index.split('.')[0])
+
+            # 检查是否所有行都已注释
+            all_commented = True
+            lines_to_process = []
+
+            for line_num in range(start_line, end_line + 1):
+                line_start = f"{line_num}.0"
+                line_end = f"{line_num}.end"
+                line_content = self.code_text.get(line_start, line_end)
+
+                # 跳过空行
+                if line_content.strip():
+                    lines_to_process.append((line_num, line_content))
+                    # 检查是否以 # 开头（忽略前导空格）
+                    if not line_content.lstrip().startswith('#'):
+                        all_commented = False
+
+            # 根据当前状态决定是添加还是移除注释
+            for line_num, line_content in lines_to_process:
+                line_start = f"{line_num}.0"
+                line_end = f"{line_num}.end"
+
+                if all_commented:
+                    # 移除注释
+                    # 找到第一个 # 的位置
+                    stripped = line_content.lstrip()
+                    if stripped.startswith('#'):
+                        # 计算前导空格数量
+                        leading_spaces = len(line_content) - len(stripped)
+                        # 移除 # 和可能的一个空格
+                        if stripped.startswith('# '):
+                            new_content = line_content[:leading_spaces] + stripped[2:]
+                        else:
+                            new_content = line_content[:leading_spaces] + stripped[1:]
+
+                        # 替换行内容
+                        self.code_text.delete(line_start, line_end)
+                        self.code_text.insert(line_start, new_content)
+                else:
+                    # 添加注释
+                    # 找到第一个非空格字符的位置
+                    stripped = line_content.lstrip()
+                    if stripped:  # 非空行
+                        leading_spaces = len(line_content) - len(stripped)
+                        new_content = line_content[:leading_spaces] + '# ' + stripped
+
+                        # 替换行内容
+                        self.code_text.delete(line_start, line_end)
+                        self.code_text.insert(line_start, new_content)
+
+            # 触发语法高亮更新
+            self.on_text_change()
+
+        except Exception as e:
+            print(f"注释切换错误: {e}")
+
+        return "break"  # 阻止默认行为
+
+    def handle_shift_tab(self, event):
+        """处理Shift+Tab - 减少缩进"""
+        try:
+            sel_start = self.code_text.index(tk.SEL_FIRST)
+            sel_end = self.code_text.index(tk.SEL_LAST)
+
+            start_line = int(sel_start.split('.')[0])
+            end_line = int(sel_end.split('.')[0])
+
+            for line_num in range(start_line, end_line + 1):
+                line_start = f"{line_num}.0"
+                line_end = f"{line_num}.end"
+                line_content = self.code_text.get(line_start, line_end)
+
+                # 移除行首的4个空格或制表符
+                if line_content.startswith("    "):
+                    self.code_text.delete(line_start, f"{line_num}.4")
+                elif line_content.startswith("\t"):
+                    self.code_text.delete(line_start, f"{line_num}.1")
+
+        except tk.TclError:
+            # 没有选中文本，处理当前行
+            current_line = self.code_text.index(tk.INSERT).split('.')[0]
+            line_start = f"{current_line}.0"
+            line_end = f"{current_line}.end"
+            line_content = self.code_text.get(line_start, line_end)
+
+            if line_content.startswith("    "):
+                self.code_text.delete(line_start, f"{current_line}.4")
+            elif line_content.startswith("\t"):
+                self.code_text.delete(line_start, f"{current_line}.1")
+
+        return "break"
+
+    def handle_backspace(self, event):
+        """处理退格键 - 智能删除缩进"""
+        # 获取当前光标位置
+        current_pos = self.code_text.index(tk.INSERT)
+        line_num, col_num = current_pos.split('.')
+        line_num = int(line_num)
+        col_num = int(col_num)
+
+        # 获取当前行内容
+        line_start = f"{line_num}.0"
+        line_end = f"{line_num}.end"
+        line_content = self.code_text.get(line_start, line_end)
+
+        # 检查是否在行首或只有空格的位置
+        if col_num > 0:
+            # 获取光标前的内容
+            before_cursor = line_content[:col_num]
+
+            # 如果光标前只有空格，且空格数是4的倍数，则删除4个空格
+            if before_cursor and all(c == ' ' for c in before_cursor) and len(before_cursor) % 4 == 0:
+                # 删除4个空格（一个tab的等价）
+                delete_start = f"{line_num}.{col_num - 4}"
+                delete_end = f"{line_num}.{col_num}"
+                self.code_text.delete(delete_start, delete_end)
+                return "break"  # 阻止默认退格行为
+
+        # 如果不满足智能删除条件，执行默认退格行为
+        return None
+
+    def handle_auto_complete(self, event):
+        """处理括号自动补全"""
+        char = event.char
+        pairs = {
+            '(': ')',
+            '[': ']',
+            '{': '}',
+            '"': '"',
+            "'": "'"
+        }
+        
+        # 获取当前光标位置
+        current_pos = self.code_text.index(tk.INSERT)
+        
+        # 检查光标后的字符
+        try:
+            next_char = self.code_text.get(current_pos)
+        except tk.TclError:
+            next_char = ''
+        
+        # 如果输入的是右括号/引号，且光标后就是相同的字符，则跳过
+        if char in [')', ']', '}', '"', "'"] and char == next_char:
+            # 将光标向前移动一位，跳过已存在的字符
+            new_pos = self.code_text.index(f"{current_pos}+1c")
+            self.code_text.mark_set(tk.INSERT, new_pos)
+            return "break"  # 阻止默认的字符插入行为
+        
+        # 如果输入的是左括号/引号，进行自动补全
+        if char in pairs:
+            # 插入配对字符
+            self.code_text.insert(current_pos, pairs[char])
+            # 将光标移回到配对字符之间
+            self.code_text.mark_set(tk.INSERT, current_pos)
+            # 注意：这里不要返回"break"，让左括号正常插入
+
+    def create_button_area(self, parent):
+        """创建按钮区域"""
+        button_frame = ttk.Frame(parent)
+        button_frame.pack(fill=tk.X, pady=(10, 0))
+
+        # 保存按钮
+        save_btn = ttk.Button(button_frame, text="保存 (Ctrl+S)", command=self.save_code)
+        save_btn.pack(side=tk.RIGHT, padx=(5, 0))
+
+        # 取消按钮
+        cancel_btn = ttk.Button(button_frame, text="取消", command=self.cancel_edit)
+        cancel_btn.pack(side=tk.RIGHT)
+
+        # 问问AI按钮
+        ai_btn = ttk.Button(button_frame, text="问问AI", command=self.ask_ai_for_test_data)
+        ai_btn.pack(side=tk.LEFT, padx=(5, 0))
+
+        # 重置按钮
+        reset_btn = ttk.Button(button_frame, text="重置模板", command=self.reset_template)
+        reset_btn.pack(side=tk.LEFT)
+
+    def initialize_code_content(self):
+        """初始化代码内容"""
+        if self.initial_code.strip():
+            # 如果有初始代码，使用初始代码
+            self.code_text.insert(1.0, self.initial_code)
+        elif self.template_code.strip():
+            # 如果没有初始代码但有模板，使用模板
+            self.code_text.insert(1.0, self.template_code)
+
+        # 执行语法高亮
+        if self.highlighter:
+            self.highlighter.highlight_syntax()
+
+        # 设置文本颜色
+        self.code_text.config(foreground="black")
+
+    def reset_template(self):
+        """重置为模板代码"""
+        if self.template_code.strip():
+            self.code_text.delete(1.0, tk.END)
+            self.code_text.insert(1.0, self.template_code)
+            # 触发语法高亮
+            self.on_text_change()
+
+    def save_code(self):
+        """保存代码并关闭编辑器"""
+        if self.code_text:
+            self.saved_code = self.code_text.get(1.0, tk.END + "-1c")
+
+            # 如果有保存回调函数，调用它
+            if self.on_save:
+                self.on_save(self.saved_code)
+
+            # 关闭编辑器窗口
+            if self.editor_window:
+                self.editor_window.destroy()
+
+    def cancel_edit(self):
+        """取消编辑并关闭编辑器"""
+        if self.editor_window:
+            self.editor_window.destroy()
+
+    def handle_undo(self, event):
+        """处理撤销操作"""
+        try:
+            self.code_text.edit_undo()
+            # 触发语法高亮更新
+            self.on_text_change()
+        except tk.TclError:
+            # 没有可撤销的操作
+            pass
+        return "break"
+
+    def handle_redo(self, event):
+        """处理重做操作"""
+        try:
+            self.code_text.edit_redo()
+            # 触发语法高亮更新
+            self.on_text_change()
+        except tk.TclError:
+            # 没有可重做的操作
+            pass
+        return "break"
+
+    def get_code(self) -> str:
+        """获取当前代码内容"""
+        if self.code_text:
+            return self.code_text.get(1.0, tk.END + "-1c")
+        return self.saved_code
+
+    def set_code(self, code: str):
+        """设置代码内容"""
+        if self.code_text:
+            self.code_text.delete(1.0, tk.END)
+            self.code_text.insert(1.0, code)
+            # 触发语法高亮
+            self.on_text_change()
+
+    def ask_ai_for_test_data(self):
+        """调用AI生成测试数据"""
+        try:
+            # 获取API密钥
+            api_key = self.get_deepseek_api_key()
+            if not api_key:
+                return
+
+            # 获取题目描述
+            problem_description = self.get_problem_description()
+            if not problem_description:
+                return
+
+            # 使用测试数据生成提示词模板
+            prompt = generate_test_data_prompt(problem_description)
+
+            # 创建DeepSeek对话框
+            dialog = DeepSeekDialog(self.editor_window or self.parent, api_key, prompt, "")
+            dialog.start_generation()  # 启动代码生成
+
+        except ImportError as e:
+            messagebox.showerror("导入错误",
+                                 f"DeepSeek功能不可用，缺少模块：{str(e)}\n\n请检查以下模块是否已安装：\n- deepseek_dialog\n- 相关依赖库")
+        except ModuleNotFoundError as e:
+            messagebox.showerror("模块未找到",
+                                 f"找不到模块：{str(e)}\n\n请确保以下文件存在：\n- gui/deepseek_dialog.py\n- deepseek_api/deepseek_dialog.py")
+        except Exception as e:
+            messagebox.showerror("错误", f"调用DeepSeek时出错：{str(e)}")
+
+    def get_deepseek_api_key(self) -> str:
+        """获取DeepSeek API密钥"""
+        # 使用API密钥管理器
+        api_key = ApiKeyManager.get_api_key()
+        if api_key:
+            return api_key
+
+        # 如果没有保存的密钥，弹出输入对话框
+        dialog = ApiKeyDialog(self.editor_window or self.parent)
+        api_key = dialog.show()
+
+        return api_key
+
+    def get_problem_description(self) -> str:
+        """获取题目描述"""
+        # 创建题目描述输入对话框
+        dialog = tk.Toplevel(self.editor_window or self.parent)
+        dialog.title("输入题目描述")
+        dialog.geometry("600x400")
+        dialog.transient(self.editor_window or self.parent)
+        dialog.grab_set()
+
+        # 主框架
+        main_frame = ttk.Frame(dialog, padding="20")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # 说明标签
+        info_label = ttk.Label(main_frame, text="请输入题目描述，AI将根据此描述生成测试数据：")
+        info_label.pack(pady=(0, 10))
+
+        # 文本输入框 - 限制高度
+        text_frame = ttk.Frame(main_frame)
+        text_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 20))
+
+        text_widget = tk.Text(text_frame, wrap=tk.WORD, font=('Microsoft YaHei', 10), height=12)
+        scrollbar = ttk.Scrollbar(text_frame, orient="vertical", command=text_widget.yview)
+        text_widget.config(yscrollcommand=scrollbar.set)
+
+        text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        text_widget.focus_set()
+
+        # 按钮框架 - 确保固定在底部
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill=tk.X, side=tk.BOTTOM)
+
+        result = {"description": ""}
+
+        def on_confirm():
+            result["description"] = text_widget.get(1.0, tk.END).strip()
+            dialog.destroy()
+
+        def on_cancel():
+            dialog.destroy()
+
+        # 确认和取消按钮
+        ttk.Button(button_frame, text="确认", command=on_confirm).pack(side=tk.RIGHT, padx=(5, 0))
+        ttk.Button(button_frame, text="取消", command=on_cancel).pack(side=tk.RIGHT)
+
+        # 等待对话框关闭
+        dialog.wait_window()
+
+        return result["description"]
+
+
+# 便捷函数
+def show_code_editor(parent, title: str = "代码编辑器",
+                     initial_code: str = "",
+                     template_code: str = "",
+                     width: int = 700, height: int = 600) -> str:
+    """显示代码编辑器的便捷函数
+    
+    Args:
+        parent: 父窗口
+        title: 编辑器标题
+        initial_code: 初始代码
+        template_code: 模板代码
+        width: 窗口宽度
+        height: 窗口高度
+    
+    Returns:
+        编辑后的代码
+    """
+    editor = CodeEditor(parent, title, initial_code, template_code, width=width, height=height)
+    return editor.show()

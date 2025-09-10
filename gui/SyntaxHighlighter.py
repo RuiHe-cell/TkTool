@@ -26,30 +26,7 @@ class SyntaxHighlighter:
             with open(config_path, 'r', encoding='utf-8') as f:
                 return json.load(f)
         except FileNotFoundError:
-            return self.get_default_config()
-    
-    def get_default_config(self):
-        """获取默认语法高亮配置"""
-        return {
-            "python": {
-                "keywords": {
-                    "words": ["def", "class", "if", "else", "elif", "for", "while", "try", "except", "import", "from", "return"],
-                    "color": "#0000FF",
-                    "bold": True
-                },
-                "strings": {
-                    "patterns": ["\".*?\"", "'.*?'"],
-                    "color": "#008000",
-                    "bold": False
-                },
-                "comments": {
-                    "patterns": ["#.*$"],
-                    "color": "#808080",
-                    "bold": False,
-                    "italic": True
-                }
-            }
-        }
+            return {}  # 默认配置, 不高亮
     
     def setup_tags(self):
         """设置文本标签样式"""
@@ -109,12 +86,78 @@ class SyntaxHighlighter:
             
             lang_config = self.config[self.language]
             
-            # 分批处理以避免UI冻结
-            self.highlight_batch(lang_config, content, 0)
+            # 使用新的高亮方法
+            self.highlight_with_priority(lang_config, content)
             
         except Exception as e:
             print(f"语法高亮错误: {e}")
-    
+
+    def highlight_with_priority(self, lang_config, content):
+        """按优先级顺序进行高亮"""
+        # 首先收集注释和字符串的范围
+        protected_ranges = []
+
+        # 按优先级顺序：注释 → 字符串 → 其他
+        priority_order = ["comments", "strings", "keywords", "builtin_functions", "decorators", "numbers", "operators"]
+
+        # 第一步：处理注释和字符串，并收集它们的范围
+        for category in ["comments", "strings"]:
+            if category in lang_config:
+                settings = lang_config[category]
+                if "patterns" in settings:
+                    for pattern in settings["patterns"]:
+                        # 对于多行字符串和注释，使用DOTALL标志确保.匹配换行符
+                        flags = re.MULTILINE | re.DOTALL
+                        for match in re.finditer(pattern, content, flags):
+                            protected_ranges.append((match.start(), match.end()))
+                            # 直接高亮这些区域
+                            self.add_highlight_from_match(match, category, content)
+
+        # 第二步：处理其他类别，跳过保护区域
+        for category in priority_order[2:]:  # 跳过comments和strings
+            if category in lang_config:
+                settings = lang_config[category]
+
+                if "words" in settings:
+                    for word in settings["words"]:
+                        self.highlight_word_skip_protected(word, category, content, protected_ranges)
+
+                if "patterns" in settings:
+                    for pattern in settings["patterns"]:
+                        self.highlight_pattern_skip_protected(pattern, category, content, protected_ranges)
+
+    def add_highlight_from_match(self, match, tag, content):
+        """从正则匹配对象添加高亮"""
+        # 计算起始行和列
+        start_index = match.start()
+        end_index = match.end()
+
+        # 找到起始位置之前的最后一个换行符
+        last_newline_before_start = content.rfind('\n', 0, start_index)
+        if last_newline_before_start == -1:
+            start_line = 1
+            start_col = start_index
+        else:
+            start_line = content[:start_index].count('\n') + 1
+            start_col = start_index - last_newline_before_start - 1
+
+        # 找到结束位置之前的最后一个换行符
+        last_newline_before_end = content.rfind('\n', 0, end_index)
+        if last_newline_before_end == -1:
+            end_line = 1
+            end_col = end_index
+        else:
+            end_line = content[:end_index].count('\n') + 1
+            end_col = end_index - last_newline_before_end - 1
+
+        start_pos = f"{start_line}.{start_col}"
+        end_pos = f"{end_line}.{end_col}"
+
+        try:
+            self.text_widget.tag_add(tag, start_pos, end_pos)
+        except tk.TclError:
+            pass
+
     def highlight_visible_area(self):
         """只高亮可见区域"""
         try:
@@ -145,26 +188,10 @@ class SyntaxHighlighter:
             print(f"可见区域高亮错误: {e}")
     
     def highlight_batch(self, lang_config, content, category_index):
-        """分批处理高亮以避免UI冻结"""
-        categories = list(lang_config.keys())
-        if category_index >= len(categories):
-            return
-        
-        category = categories[category_index]
-        settings = lang_config[category]
-        
-        # 处理当前类别
-        if "words" in settings:
-            for word in settings["words"]:
-                self.highlight_word(word, category, content)
-        
-        if "patterns" in settings:
-            for pattern in settings["patterns"]:
-                self.highlight_pattern(pattern, category, content)
-        
-        # 调度下一个类别
-        if category_index + 1 < len(categories):
-            self.text_widget.after_idle(lambda: self.highlight_batch(lang_config, content, category_index + 1))
+        """分批处理高亮以避免UI冻结（已弃用，使用highlight_with_priority代替）"""
+        # 为了兼容性保留，但实际使用highlight_with_priority
+        if category_index == 0:
+            self.highlight_with_priority(lang_config, content)
     
     def highlight_content_range(self, lang_config, content, start_line_num):
         """高亮指定范围的内容（修复注释优先级问题）"""
@@ -203,12 +230,12 @@ class SyntaxHighlighter:
             if "patterns" in settings:
                 for pattern in settings["patterns"]:
                     self.highlight_pattern_in_range_skip_comments(pattern, category, content, start_line_num, comment_ranges)
-    
+
     def clear_highlights(self, start_pos="1.0", end_pos=None):
         """清除指定范围的高亮"""
         if end_pos is None:
             end_pos = tk.END
-        
+
         for tag in self.text_widget.tag_names():
             if tag not in ["sel", "current"]:
                 # 获取标签范围
@@ -216,9 +243,9 @@ class SyntaxHighlighter:
                 for i in range(0, len(ranges), 2):
                     tag_start = ranges[i]
                     tag_end = ranges[i + 1]
-                    
+
                     # 检查是否在清除范围内
-                    if (self.text_widget.compare(tag_start, ">=", start_pos) and 
+                    if (self.text_widget.compare(tag_start, ">=", start_pos) and
                         self.text_widget.compare(tag_end, "<=", end_pos)):
                         self.text_widget.tag_remove(tag, tag_start, tag_end)
     
@@ -351,4 +378,66 @@ class SyntaxHighlighter:
         """设置性能参数"""
         self.max_highlight_lines = max_lines
         self.debounce_delay = debounce_delay
+
+    def is_in_protected_range(self, start_pos, end_pos, protected_ranges):
+        """检查位置是否在保护范围内（注释或字符串）"""
+        for range_start, range_end in protected_ranges:
+            # 只要有重叠就应视为在保护区域内
+            if not (end_pos <= range_start or start_pos >= range_end):
+                return True
+        return False
+
+    def highlight_word_skip_protected(self, word, tag, content, protected_ranges):
+        """高亮单词，但跳过保护区域"""
+        pattern = r'\b' + re.escape(word) + r'\b'
         
+        # 限制匹配数量以提高性能
+        matches = list(re.finditer(pattern, content))
+        if len(matches) > 500:
+            matches = matches[:500]
+        
+        for match in matches:
+            # 检查是否在保护区域内
+            if self.is_in_protected_range(match.start(), match.end(), protected_ranges):
+                continue
+                
+            start_line = content[:match.start()].count('\n') + 1
+            start_col = match.start() - content.rfind('\n', 0, match.start()) - 1
+            end_line = content[:match.end()].count('\n') + 1
+            end_col = match.end() - content.rfind('\n', 0, match.end()) - 1
+            
+            start_pos = f"{start_line}.{start_col}"
+            end_pos = f"{end_line}.{end_col}"
+            
+            try:
+                self.text_widget.tag_add(tag, start_pos, end_pos)
+            except tk.TclError:
+                continue
+    
+    def highlight_pattern_skip_protected(self, pattern, tag, content, protected_ranges):
+        """高亮正则表达式模式，但跳过保护区域"""
+        try:
+            # 限制匹配数量
+            matches = list(re.finditer(pattern, content, re.MULTILINE))
+            if len(matches) > 200:
+                matches = matches[:200]
+            
+            for match in matches:
+                # 检查是否在保护区域内
+                if self.is_in_protected_range(match.start(), match.end(), protected_ranges):
+                    continue
+                    
+                start_line = content[:match.start()].count('\n') + 1
+                start_col = match.start() - content.rfind('\n', 0, match.start()) - 1
+                end_line = content[:match.end()].count('\n') + 1
+                end_col = match.end() - content.rfind('\n', 0, match.end()) - 1
+                
+                start_pos = f"{start_line}.{start_col}"
+                end_pos = f"{end_line}.{end_col}"
+                
+                try:
+                    self.text_widget.tag_add(tag, start_pos, end_pos)
+                except tk.TclError:
+                    continue
+        except re.error:
+            print(f"正则表达式错误: {pattern}")
